@@ -1,110 +1,93 @@
-import requests
-import re
+#! env python3
+# coding: utf-8
+# Athor: Lz1y
+# Blog: www.Lz1y.cn
+# TIPS: PDF|PPT只能下载图片
 import argparse
-import sys
 import json
-import os
+import pathlib
+import re
+
+import requests
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("url", help="Target Url,你所需要文档的URL",type=str)
-parser.add_argument('type', help="Target Type,你所需要文档的的类型(DOC|PPT|TXT|PDF)",type=str)
+parser.add_argument('url', help='Target Url,你所需要文档的URL')
+parser.add_argument('type', help='Target Type,你所需要文档的的类型(DOC|PPT|TXT|PDF)')
 args = parser.parse_args()
 
 url = args.url
 type = args.type
 
-#根据文件决定函数
-y = 0
+
+def mkdir(path):
+    pathlib.Path(path).mkdir(exist_ok=True)
+
+
+def get_id(url):
+    return re.match('.*view/(.*).html', url).group(1)
+
+
 def DOC(url):
-    doc_id = re.findall('view/(.*).html', url)[0]
+    # https://wenku.baidu.com/view/7bfacb3c312b3169a451a495.html
+    doc_id = get_id(url)
     html = requests.get(url).text
-    lists=re.findall('(https.*?0.json.*?)\\\\x22}',html)
-    lenth = (len(lists)//2)
-    NewLists = lists[:lenth]
-    for i in range(len(NewLists)) :
-        NewLists[i] = NewLists[i].replace('\\','')
-        txts=requests.get(NewLists[i]).text
-        txtlists = re.findall('"c":"(.*?)".*?"y":(.*?),',txts)
-        for i in range(0,len(txtlists)):
-            global y
-            print(txtlists[i][0].encode('utf-8').decode('unicode_escape','ignore'))
-            if y != txtlists[i][1]:
-                y = txtlists[i][1]
-                n = '\n'
-            else:
-                n = ''
-            filename = doc_id + '.txt'
-            with open(filename,'a',encoding='utf-8') as f:
-                f.write(n+txtlists[i][0].encode('utf-8').decode('unicode_escape','ignore').replace('\\',''))
-        print("文档保存在"+filename)
+    lists = re.findall('(https.*?0.json.*?)\\\\x22}', html)
+    lenth = len(lists) // 2
+    new_lists = lists[:lenth]
+    y = 0
+    fn = f'{doc_id}.txt'
+    fp = open(fn, 'w')
+    for line in new_lists:
+        line = line.replace('\\', '')
+        txts = requests.get(line).text
+        txtlists = re.findall('"c":"(.*?)".*?"y":(.*?),', txts)
+        for txt in txtlists:
+            if y != txt[1]:
+                y = txt[1]
+                fp.write('\n')
+            fp.write(txt[0].encode().decode('unicode_escape'))
+    print(f'Save to {fn}.')
 
-
-
-
-def PPT(url):
-    doc_id = re.findall('view/(.*).html',url)[0]
-    url = "https://wenku.baidu.com/browse/getbcsurl?doc_id="+doc_id+"&pn=1&rn=99999&type=ppt"
-    html = requests.get(url).text
-    lists=re.findall('{"zoom":"(.*?)","page"',html)
-    for i in range(0,len(lists)):
-        lists[i] = lists[i].replace("\\",'')
-    try:
-        os.mkdir(doc_id)
-    except:
-        pass
-    for i in range(0,len(lists)):
-        img=requests.get(lists[i]).content
-        with open(doc_id+'\img'+str(i)+'.jpg','wb') as m:
-            m.write(img)
-    print("PPT图片保存在" + doc_id +"文件夹")
 
 def TXT(url):
-    doc_id = re.findall('view/(.*).html', url)[0]
-    url = "https://wenku.baidu.com/api/doc/getdocinfo?callback=cb&doc_id="+doc_id
-    html = requests.get(url).text
-    md5 = re.findall('"md5sum":"(.*?)"',html)[0]
-    pn = re.findall('"totalPageNum":"(.*?)"',html)[0]
-    rsign = re.findall('"rsign":"(.*?)"',html)[0]
-    NewUrl = 'https://wkretype.bdimg.com/retype/text/'+doc_id+'?rn='+pn+'&type=txt'+md5+'&rsign='+rsign
-    txt = requests.get(NewUrl).text
-    jsons = json.loads(txt)
-    texts=re.findall("'c': '(.*?)',",str(jsons))
-    print(texts)
-    filename=doc_id+'.txt'
-    with open(filename,'a',encoding='utf-8') as f:
-        for i in range(0,len(texts)):
-            texts[i] = texts[i].replace('\\r','\r')
-            texts[i] = texts[i].replace('\\n','\n')
+    # https://wenku.baidu.com/view/327ed8b51eb91a37f0115c13.html
+    doc_id = get_id(url)
+    url = 'https://wenku.baidu.com/api/doc/getdocinfo?' \
+          f'callback=json&doc_id={doc_id}'
+    text = requests.get(url).text
+    text = re.match(r'.*json\((.*)\)', text).group(1)
+    data = json.loads(text)
+    md5 = data['md5sum']
+    pn = data['docInfo']['totalPageNum']
+    rsign = data['rsign']
+    url = 'https://wkretype.bdimg.com/retype/text/' \
+          f'{doc_id}?rn={pn}&type=txt{md5}&rsign={rsign}'
+    body = requests.get(url).json()
+    fn = f'{doc_id}.txt'
+    fp = open(fn, 'w')
+    for data in body:
+        for parag in data['parags']:
+            fp.write(parag['c'])
+    print(f'Save to {fn}.')
 
-            f.write(texts[i])
-    print("文档保存在" + filename)
 
 def PDF(url):
-    doc_id = re.findall('view/(.*).html',url)[0]
-    url = "https://wenku.baidu.com/browse/getbcsurl?doc_id="+doc_id+"&pn=1&rn=99999&type=ppt"
-    html = requests.get(url).text
-    lists=re.findall('{"zoom":"(.*?)","page"',html)
-    for i in range(0,len(lists)):
-        lists[i] = lists[i].replace("\\",'')
-    try:
-        os.mkdir(doc_id)
-    except:
-        pass
-    for i in range(0,len(lists)):
-        img=requests.get(lists[i]).content
-        with open(doc_id+'\img'+str(i)+'.jpg','wb') as m:
-            m.write(img)
-    print("FPD图片保存在" + doc_id + "文件夹")
+    # https://wenku.baidu.com/view/37bdddf5f90f76c661371a6b.html
+    doc_id = get_id(url)
+    url = 'https://wenku.baidu.com/browse/getbcsurl?'   \
+          f'pn=1&rn=99999&type=ppt&doc_id={doc_id}'
+    body = requests.get(url).json()
+    mkdir(doc_id)
+    for idx, data in enumerate(body):
+        img = requests.get(data['zoom']).content
+        with open(f'{doc_id}/{idx}.jpg', 'wb') as fp:
+            fp.write(img)
+    print(f'Save to {doc_id} dir.')
 
 
-if __name__ == "__main__":
-    try:
-        print("""
-###Athor:Lz1y
-###Blog:www.Lz1y.cn
-###TIPS:PDF|PPT只能下载图片
-        """)
-        eval(type.upper())(url)
-    except:
-        print("获取出错，可能URL错误\n使用格式name.exe url type\n请使用--help查看帮助")
+PPT = PDF
+
+
+if __name__ == '__main__':
+    eval(type.upper())(url)
