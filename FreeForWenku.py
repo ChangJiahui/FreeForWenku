@@ -25,7 +25,7 @@ def mkdir(path):
 
 
 def get_id(url):
-    return re.match('.*view/(.*).html', url).group(1)
+    return re.match('.*view/(.*)(.html)?', url).group(1)
 
 
 def DOC(url):
@@ -72,7 +72,7 @@ def TXT(url):
     print(f'Save to {fn}.')
 
 
-def PDF(url):
+def PPT(url):
     # https://wenku.baidu.com/view/37bdddf5f90f76c661371a6b.html
     doc_id = get_id(url)
     url = 'https://wenku.baidu.com/browse/getbcsurl?'   \
@@ -86,7 +86,22 @@ def PDF(url):
     print(f'Save to {doc_id} dir.')
 
 
-PPT = PDF
+def PDF(url):
+    # https://wenku.baidu.com/view/246214f5d15abe23492f4d15
+    doc_id = get_id(url)
+    html = requests.get(url).text
+    # 寻找下载地址
+    urls = re.search("WkInfo.htmlUrls = '(.*)'", html).group(1)
+    urls = urls.replace(r'\/', '/')     # ?
+    urls = urls.encode().decode('unicode_escape')
+    urls = json.loads(urls)
+    mkdir(doc_id)
+    for idx, url in enumerate(urls['png']):
+        url = url['pageLoadUrl']
+        img = requests.get(url).content
+        with open(f'{doc_id}/{idx}.png', 'wb') as fp:
+            fp.write(img)
+    print(f'Save to {doc_id} dir.')
 
 
 if __name__ == '__main__':
